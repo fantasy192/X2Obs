@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>X2Flow 设置</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      width: 360px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f8fa;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #e1e8ed;
+    }
+    .header img {
+      width: 32px;
+      height: 32px;
+    }
+    .header h1 {
+      font-size: 18px;
+      color: #14171a;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #536471;
+      margin-bottom: 6px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cfd9de;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #1da1f2;
+      box-shadow: 0 0 0 2px rgba(29, 161, 242, 0.1);
+    }
+    input[type="text"]::placeholder {
+      color: #9ca3af;
+    }
+    .help-text {
+      font-size: 12px;
+      color: #71767b;
+      margin-top: 4px;
+    }
+    .help-text a {
+      color: #1da1f2;
+      text-decoration: none;
+    }
+    .help-text a:hover {
+      text-decoration: underline;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 9999px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .btn-primary {
+      background: #1da1f2;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #1a91da;
+    }
+    .btn-primary:disabled {
+      background: #9bd1f9;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      text-align: center;
+      display: none;
+    }
+    .status.success {
+      display: block;
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .status.error {
+      display: block;
+      background: #ffebee;
+      color: #c62828;
+    }
+    .divider {
+      height: 1px;
+      background: #e1e8ed;
+      margin: 20px 0;
+    }
+    .info-section {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      border: 1px solid #e1e8ed;
+    }
+    .info-section h3 {
+      font-size: 13px;
+      color: #14171a;
+      margin-bottom: 8px;
+    }
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #536471;
+      padding: 4px 0;
+    }
+    .info-item .value {
+      color: #14171a;
+      font-weight: 500;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .status-dot.active {
+      background: #00ba7c;
+    }
+    .status-dot.inactive {
+      background: #f4212e;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icon48.png" alt="Logo">
+    <h2>X2Flow</h2>
+  </div>
+
+  <div class="form-group">
+    <label for="token">FlowUs Token</label>
+    <input type="text" id="token" placeholder="输入机器人集成Token">
+    <p class="help-text">在 FlowUs 设置 → 集成 中创建机器人获取</p>
+  </div>
+
+  <div class="form-group">
+    <label for="pageId">目标页面 ID</label>
+    <input type="text" id="pageId" placeholder="输入FlowUs页面ID">
+    <p class="help-text">从页面URL获取：flowus.cn/share/<strong>{页面ID}</strong>?code=xxx</p>
+  </div>
+
+  <button class="btn btn-primary" id="saveBtn">保存设置</button>
+  
+  <div class="status" id="status"></div>
+
+  <div class="divider"></div>
+
+  <div class="info-section">
+    <h3>当前状态</h3>
+    <div class="info-item">
+      <span>Token</span>
+      <span class="value" id="tokenStatus">
+        <span class="status-dot inactive"></span>未配置
+      </span>
+    </div>
+    <div class="info-item">
+      <span>页面ID</span>
+      <span class="value" id="pageIdStatus">
+        <span class="status-dot inactive"></span>未配置
+      </span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
