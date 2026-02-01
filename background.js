@@ -1,13 +1,23 @@
-// ==================== FlowUs API基础配置 ====================
-const FLOWUS_API_BASE = "https://api.flowus.cn/v1";
-
 // ==================== 获取用户配置 ====================
 async function getConfig() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(['flowus_token', 'flowus_page_id'], (result) => {
+    chrome.storage.sync.get([
+      'save_mode',
+      'markdown_save_path',
+      'github_token',
+      'github_repo',
+      'github_path',
+      'github_branch'
+    ], (result) => {
       resolve({
-        token: result.flowus_token || '',
-        pageId: result.flowus_page_id || ''
+        mode: result.save_mode || 'local',
+        savePath: result.markdown_save_path || '',
+        github: {
+          token: result.github_token || '',
+          repo: result.github_repo || '',
+          path: result.github_path || '',
+          branch: result.github_branch || 'main'
+        }
       });
     });
   });
@@ -18,14 +28,7 @@ async function getConfig() {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "saveTweetToMarkdown",
-    title: "保存推文到本地 Markdown",
-    contexts: ["all"],
-    documentUrlPatterns: ["https://twitter.com/*", "https://x.com/*"]
-  });
-  
-  chrome.contextMenus.create({
-    id: "saveTweetToFlowUs",
-    title: "保存推文到 FlowUs",
+    title: "保存推文到 Markdown",
     contexts: ["all"],
     documentUrlPatterns: ["https://twitter.com/*", "https://x.com/*"]
   });
@@ -35,8 +38,8 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   console.log("Menu clicked:", info.menuItemId);
-  
-  if (info.menuItemId === "saveTweetToMarkdown" || info.menuItemId === "saveTweetToFlowUs" || info.menuItemId === "downloadVideo") {
+
+  if (info.menuItemId === "saveTweetToMarkdown") {
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ["content.js"]
@@ -46,17 +49,21 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           console.error("Error:", chrome.runtime.lastError.message);
           return;
         }
-        
+
         if (response && response.success) {
-          if (info.menuItemId === "saveTweetToMarkdown") {
-            const markdown = generateMarkdown(response.data);
-            downloadMarkdown(markdown, response.data.author);
-            console.log("已保存到本地Markdown");
-          } else if (info.menuItemId === "saveTweetToFlowUs") {
-            await handleSaveToFlowUs(response.data, tab.id);
-          } else if (info.menuItemId === "downloadVideo") {
-            await handleDownloadVideo(response.data, tab.id);
+          const config = await getConfig();
+          const markdown = generateMarkdown(response.data);
+          const filename = generateFilename(response.data.author);
+
+          if (config.mode === 'github') {
+            // 提交到 GitHub
+            await saveToGitHub(markdown, filename, config.github, tab.id);
+          } else {
+            // 本地下载
+            downloadMarkdown(markdown, filename, config.savePath);
+            sendToast(tab.id, "已保存到本地!", "success");
           }
+          console.log("保存完成");
         } else {
           console.error("获取推文失败:", response?.error);
           sendToast(tab.id, "获取推文失败", "error");
@@ -66,74 +73,112 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-// ==================== 视频下载处理 ====================
+// ==================== GitHub API ====================
 
-async function handleDownloadVideo(data, tabId) {
-  // 优先处理 YouTube 等外部视频
-  if (data.videoUrl && (data.videoUrl.includes("youtube.com") || data.videoUrl.includes("youtu.be"))) {
-    sendToast(tabId, "暂不支持下载 YouTube 视频，请使用第三方工具", "info");
+async function saveToGitHub(content, filename, githubConfig, tabId) {
+  const { token, repo, path, branch } = githubConfig;
+
+  if (!token || !repo) {
+    sendToast(tabId, "请先配置 GitHub Token 和仓库", "error");
     return;
   }
 
-  const tweetId = data.tweetId;
-  if (!tweetId) {
-    sendToast(tabId, "未找到 Tweet ID", "error");
-    return;
+  // 构建文件路径
+  const filePath = path ? `${path}/${filename}` : filename;
+
+  sendToast(tabId, "正在提交到 GitHub...", "info");
+
+  try {
+    // Base64 编码内容
+    const contentBase64 = btoa(unescape(encodeURIComponent(content)));
+
+    // 调用 GitHub API
+    const response = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      body: JSON.stringify({
+        message: `Add tweet: ${filename}`,
+        content: contentBase64,
+        branch: branch
+      })
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log("GitHub 提交成功:", result.content.html_url);
+      sendToast(tabId, "已提交到 GitHub!", "success");
+    } else {
+      const error = await response.json();
+      console.error("GitHub API 错误:", error);
+
+      if (response.status === 401) {
+        sendToast(tabId, "GitHub Token 无效或已过期", "error");
+      } else if (response.status === 404) {
+        sendToast(tabId, "仓库不存在或无权访问", "error");
+      } else if (response.status === 422 && error.message?.includes('sha')) {
+        // 文件已存在，需要获取 sha 后更新
+        await updateExistingFile(content, filePath, githubConfig, tabId);
+      } else {
+        sendToast(tabId, `GitHub 错误: ${error.message || response.status}`, "error");
+      }
+    }
+  } catch (e) {
+    console.error("GitHub 请求失败:", e);
+    sendToast(tabId, "网络错误，请检查连接", "error");
   }
+}
 
-  sendToast(tabId, "正在获取视频地址...", "info");
+// 更新已存在的文件
+async function updateExistingFile(content, filePath, githubConfig, tabId) {
+  const { token, repo, branch } = githubConfig;
 
-  // 委托 Content Script 获取真实视频地址 (利用页面Cookie)
-  chrome.tabs.sendMessage(tabId, { action: "fetchVideoUrl", tweetId: tweetId }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error("通信错误:", chrome.runtime.lastError);
+  try {
+    // 先获取文件的 sha
+    const getResponse = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}?ref=${branch}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    });
+
+    if (!getResponse.ok) {
+      sendToast(tabId, "获取文件信息失败", "error");
       return;
     }
 
-    if (response && response.success && response.url) {
-      console.log("获取到视频 URL:", response.url);
-      
-      const filename = `twitter_${data.author}_${tweetId}.mp4`;
-      
-      chrome.downloads.download({
-        url: response.url,
-        filename: filename,
-        saveAs: false
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-           sendToast(tabId, "下载启动失败: " + chrome.runtime.lastError.message, "error");
-        } else {
-           sendToast(tabId, "开始下载视频...", "success");
-        }
-      });
+    const fileInfo = await getResponse.json();
+    const sha = fileInfo.sha;
 
+    // 更新文件
+    const contentBase64 = btoa(unescape(encodeURIComponent(content)));
+    const updateResponse = await fetch(`https://api.github.com/repos/${repo}/contents/${filePath}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/vnd.github.v3+json'
+      },
+      body: JSON.stringify({
+        message: `Update tweet: ${filePath.split('/').pop()}`,
+        content: contentBase64,
+        branch: branch,
+        sha: sha
+      })
+    });
+
+    if (updateResponse.ok) {
+      sendToast(tabId, "已更新到 GitHub!", "success");
     } else {
-      console.error("获取视频地址失败:", response?.error);
-      sendToast(tabId, "获取视频失败: " + (response?.error || "未知错误"), "error");
+      const error = await updateResponse.json();
+      sendToast(tabId, `更新失败: ${error.message}`, "error");
     }
-  });
-}
-
-// ==================== FlowUs保存处理 ====================
-
-async function handleSaveToFlowUs(data, tabId) {
-  // 获取配置
-  const config = await getConfig();
-  
-  // 检查配置
-  if (!config.token || !config.pageId) {
-    console.error("FlowUs未配置");
-    sendToast(tabId, "请先点击扩展图标配置FlowUs", "error");
-    return;
-  }
-  
-  try {
-    await saveToFlowUs(data, config.token, config.pageId);
-    console.log("已保存到FlowUs");
-    sendToast(tabId, "已保存到FlowUs!", "success");
-  } catch (error) {
-    console.error("FlowUs保存失败:", error.message);
-    sendToast(tabId, "保存失败: " + error.message, "error");
+  } catch (e) {
+    console.error("更新文件失败:", e);
+    sendToast(tabId, "更新失败", "error");
   }
 }
 
@@ -142,246 +187,11 @@ function sendToast(tabId, message, type) {
   chrome.tabs.sendMessage(tabId, { action: "showToast", message, type });
 }
 
-// ==================== FlowUs API ====================
-
-async function saveToFlowUs(data, token, parentPageId) {
-  console.log("=== 保存到FlowUs ===");
-  console.log("作者:", data.author);
-  
-  // 生成标题格式: yyyyMMddhhmmss@author
-  let dateStr = "";
-  try {
-    const date = new Date(data.date);
-    if (!isNaN(date.getTime())) {
-      // 转换为北京时间 (UTC+8) 以确保日期准确
-      const beijingOffset = 8 * 60 * 60 * 1000;
-      const beijingTime = new Date(date.getTime() + beijingOffset);
-      const year = beijingTime.getUTCFullYear();
-      const month = String(beijingTime.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(beijingTime.getUTCDate()).padStart(2, '0');
-      const hours = String(beijingTime.getUTCHours()).padStart(2, '0');
-      const minutes = String(beijingTime.getUTCMinutes()).padStart(2, '0');
-      const seconds = String(beijingTime.getUTCSeconds()).padStart(2, '0');
-      dateStr = `${year}${month}${day}${hours}${minutes}${seconds}`;
-    }
-  } catch (e) {
-    dateStr = "UnknownDate";
-  }
-
-  const titleText = `X@${dateStr}@${data.author}`;
-  
-  // 1. 创建页面
-  console.log("创建页面...");
-  const pageResponse = await fetch(`${FLOWUS_API_BASE}/pages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      parent: { page_id: parentPageId },
-      icon: { emoji: "🐦" },
-      properties: {
-        title: {
-          type: "title",
-          title: [{ text: { content: titleText } }]
-        }
-      }
-    })
-  });
-  
-  console.log("创建页面响应:", pageResponse.status);
-  
-  if (!pageResponse.ok) {
-    const errorText = await pageResponse.text();
-    console.error("创建页面错误:", errorText);
-    throw new Error(`创建页面失败(${pageResponse.status})`);
-  }
-  
-  const pageResult = await pageResponse.json();
-  const pageData = pageResult.data || pageResult;
-  const newPageId = pageData.id;
-  console.log("页面已创建, ID:", newPageId);
-  
-  // 2. 添加内容块
-  const blocks = buildFlowUsBlocks(data);
-  console.log("添加", blocks.length, "个内容块...");
-  console.log("Blocks数据:", JSON.stringify(blocks, null, 2));
-  
-  const blocksResponse = await fetch(`${FLOWUS_API_BASE}/blocks/${newPageId}/children`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`
-    },
-    body: JSON.stringify({ children: blocks })
-  });
-  
-  console.log("添加内容块响应:", blocksResponse.status);
-  
-  const blocksResultText = await blocksResponse.text();
-  console.log("添加内容块响应内容:", blocksResultText);
-  
-  if (!blocksResponse.ok) {
-    console.error("添加内容块错误:", blocksResultText);
-    throw new Error(`添加内容失败(${blocksResponse.status})`);
-  }
-  
-  console.log("=== FlowUs保存完成 ===");
-  return { page: pageData };
-}
-
-function buildFlowUsBlocks(data) {
-  const blocks = [];
-  const beijingDate = formatDateBeijing(data.date);
-  
-  // 元信息 callout
-  blocks.push({
-    type: "callout",
-    data: {
-      rich_text: [
-        createTextRichText(`📅 ${beijingDate}\n🔗 `, null),
-        createTextRichText(data.url, data.url)
-      ],
-      icon: { emoji: "ℹ️" }
-    }
-  });
-  
-  // 推文内容
-  if (data.tweets && data.tweets.length > 0) {
-    data.tweets.forEach((tweet, index) => {
-      if (data.tweets.length > 1) {
-        blocks.push({
-          type: "heading_3",
-          data: {
-            rich_text: [createTextRichText(`${index + 1}/${data.tweets.length}`, null)]
-          }
-        });
-      }
-      
-      if (tweet.content) {
-        // 将内容转换为带链接的富文本
-        const richText = parseContentToRichText(tweet.content);
-        blocks.push({
-          type: "paragraph",
-          data: { rich_text: richText }
-        });
-      }
-      
-      if (tweet.images && tweet.images.length > 0) {
-        tweet.images.forEach(imgUrl => {
-          const tweetUrl = tweet.url || data.url;
-          blocks.push({
-            type: "image",
-            data: {
-              type: "external",
-              external: { url: imgUrl },
-              // 为图片增加超链接属性
-              link: tweet.hasVideo ? { url: tweetUrl } : null,
-              caption: []
-            }
-          });
-        });
-      }
-
-      if (tweet.hasVideo) {
-        const videoUrl = tweet.videoUrl || tweet.url || data.url;
-        // 显式展示视频链接
-        blocks.push({
-          type: "paragraph",
-          data: {
-            rich_text: [
-              createTextRichText("📺 视频链接: ", null),
-              createTextRichText(videoUrl, videoUrl)
-            ]
-          }
-        });
-
-        // 尝试使用视频块 (保留作为增强功能)
-        blocks.push({
-          type: "video",
-          data: {
-            type: "external",
-            external: { url: videoUrl }
-          }
-        });
-      }
-      
-      if (data.tweets.length > 1 && index < data.tweets.length - 1) {
-        blocks.push({ type: "divider", data: {} });
-      }
-    });
-  }
-  
-  return blocks;
-}
-
-// 将内容解析为FlowUs富文本格式，识别URL并转换为链接
-function parseContentToRichText(content) {
-  const richText = [];
-  
-  // URL正则表达式
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  
-  let lastIndex = 0;
-  let match;
-  
-  while ((match = urlRegex.exec(content)) !== null) {
-    // 添加URL之前的普通文本
-    if (match.index > lastIndex) {
-      const textBefore = content.substring(lastIndex, match.index);
-      if (textBefore) {
-        richText.push(createTextRichText(textBefore, null));
-      }
-    }
-    
-    // 添加URL作为链接
-    const url = match[0];
-    richText.push(createTextRichText(url, url));
-    
-    lastIndex = match.index + match[0].length;
-  }
-  
-  // 添加最后一段普通文本
-  if (lastIndex < content.length) {
-    richText.push(createTextRichText(content.substring(lastIndex), null));
-  }
-  
-  // 如果没有任何内容，返回空文本
-  if (richText.length === 0) {
-    richText.push(createTextRichText(content, null));
-  }
-  
-  return richText;
-}
-
-// 创建FlowUs富文本对象
-function createTextRichText(content, linkUrl) {
-  // 简化格式，只保留必要字段
-  if (linkUrl) {
-    return {
-      type: "text",
-      text: {
-        content: content,
-        link: { url: linkUrl }
-      }
-    };
-  } else {
-    return {
-      type: "text",
-      text: {
-        content: content,
-        link: null
-      }
-    };
-  }
-}
-
 // ==================== Markdown生成 ====================
 
 function generateMarkdown(data) {
   const lines = [];
-  
+
   if (data.isThread && data.tweets && data.tweets.length > 1) {
     lines.push(`# Thread by @${data.author} (${data.tweets.length} tweets)`);
   } else {
@@ -397,7 +207,7 @@ function generateMarkdown(data) {
   lines.push("");
   lines.push("## Content");
   lines.push("");
-  
+
   if (data.tweets && data.tweets.length > 0) {
     data.tweets.forEach((tweet, index) => {
       if (data.tweets.length > 1) {
@@ -420,7 +230,7 @@ function generateMarkdown(data) {
       }
     });
   }
-  
+
   return lines.join("\n");
 }
 
@@ -445,15 +255,39 @@ function formatDateBeijing(dateStr) {
   }
 }
 
-function downloadMarkdown(content, author) {
+function generateFilename(author) {
   const now = new Date();
   const beijingOffset = 8 * 60 * 60 * 1000;
   const beijingTime = new Date(now.getTime() + beijingOffset);
-  const date = `${beijingTime.getUTCFullYear()}-${String(beijingTime.getUTCMonth() + 1).padStart(2, '0')}-${String(beijingTime.getUTCDate()).padStart(2, '0')}`;
-  const filename = `tweet_${author}_${date}.md`;
-  const base64Content = btoa(unescape(encodeURIComponent(content)));
-  const dataUrl = `data:text/markdown;base64,${base64Content}`;
-  chrome.downloads.download({ url: dataUrl, filename: filename, saveAs: false });
+
+  // 生成时间戳: yyyyMMddHHmmss
+  const timestamp = `${beijingTime.getUTCFullYear()}${String(beijingTime.getUTCMonth() + 1).padStart(2, '0')}${String(beijingTime.getUTCDate()).padStart(2, '0')}${String(beijingTime.getUTCHours()).padStart(2, '0')}${String(beijingTime.getUTCMinutes()).padStart(2, '0')}${String(beijingTime.getUTCSeconds()).padStart(2, '0')}`;
+
+  // 文件名格式: 时间戳@作者.md
+  return `${timestamp}@${author}.md`;
 }
 
-console.log("X2Flow background loaded");
+function downloadMarkdown(content, filename, savePath) {
+  // 如果设置了保存路径，则添加路径前缀
+  let fullPath = filename;
+  if (savePath) {
+    fullPath = `${savePath}/${filename}`;
+  }
+
+  const base64Content = btoa(unescape(encodeURIComponent(content)));
+  const dataUrl = `data:text/markdown;base64,${base64Content}`;
+
+  chrome.downloads.download({
+    url: dataUrl,
+    filename: fullPath,
+    saveAs: false
+  }, (downloadId) => {
+    if (chrome.runtime.lastError) {
+      console.error("下载失败:", chrome.runtime.lastError.message);
+    } else {
+      console.log("下载已开始, ID:", downloadId);
+    }
+  });
+}
+
+console.log("X2MD background loaded");

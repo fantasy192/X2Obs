@@ -6,7 +6,7 @@ function injectScript() {
       this.remove();
   };
   (document.head || document.documentElement).appendChild(s);
-  console.log("Tweet Saver injected script");
+  console.log("X2MD injected script");
 }
 
 injectScript();
@@ -15,7 +15,7 @@ injectScript();
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("Content script received:", request.action);
-  
+
   if (request.action === "getTweetData") {
     // 1. 先通过 DOM 找到当前目标的 Tweet ID
     const domTweet = extractThreadData(); // 复用现有逻辑仅为了获取 ID 和基本上下文
@@ -65,15 +65,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === "showToast") {
     showToast(request.message, request.type);
     sendResponse({ success: true });
-  } else if (request.action === "fetchVideoUrl") {
-    // 这个动作现在可能不需要了，因为 getTweetData 已经包含了 videoUrl
-    // 但为了保持兼容性 (background.js downloadVideo 逻辑)，我们保留它
-    fetchTweetDataFromPage(request.tweetId)
-      .then(data => sendResponse({ success: true, url: data.videoUrl }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true;
   }
-  
+
   return true;
 });
 
@@ -121,9 +114,18 @@ function fetchTweetDataFromPage(tweetId) {
 function showToast(message, type = "success") {
   const existing = document.getElementById('tweet-saver-toast');
   if (existing) existing.remove();
-  
-  const bgColor = type === "success" ? "#1da1f2" : "#e0245e";
-  const icon = type === "success" ? "✅" : "❌";
+
+  let bgColor, icon;
+  if (type === "success") {
+    bgColor = "#00ba7c";
+    icon = "✅";
+  } else if (type === "info") {
+    bgColor = "#1da1f2";
+    icon = "⏳";
+  } else {
+    bgColor = "#e0245e";
+    icon = "❌";
+  }
   
   const toast = document.createElement('div');
   toast.id = 'tweet-saver-toast';
@@ -447,4 +449,4 @@ function findTweetElement() {
   return mainArticles[0];
 }
 
-console.log("X2Flow content script loaded");
+console.log("X2MD content script loaded");

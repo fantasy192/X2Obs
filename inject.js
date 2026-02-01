@@ -7,7 +7,7 @@ window.addEventListener("message", (event) => {
   }
 
   const tweetId = event.data.tweetId;
-  console.log("[Tweet Saver Inject] Received request for:", tweetId);
+  console.log("[X2MD Inject] Received request for:", tweetId);
 
   try {
     const tweetData = findTweetDataFromReact(tweetId);
@@ -18,7 +18,7 @@ window.addEventListener("message", (event) => {
       tweetId: tweetId
     }, "*");
   } catch (error) {
-    console.error("[Tweet Saver Inject] Error:", error);
+    console.error("[X2MD Inject] Error:", error);
     window.postMessage({
       type: "TWEET_DATA_RESULT",
       success: false,
@@ -72,11 +72,11 @@ function findTweetDataFromReact(tweetId) {
   const tweetRawData = findTweetObjectInFiber(fiber);
   
   if (!tweetRawData) {
-    console.error("[Tweet Saver Inject] Fiber traversal failed. Dumping fiber for debug:", fiber);
+    console.error("[X2MD Inject] Fiber traversal failed. Dumping fiber for debug:", fiber);
     throw new Error("React 数据中未找到推文原始数据");
   }
 
-  console.log("[Tweet Saver Inject] Found raw tweet data:", tweetRawData);
+  console.log("[X2MD Inject] Found raw tweet data:", tweetRawData);
 
   // 4. 解析数据
   return parseTweetData(tweetRawData);
@@ -110,21 +110,21 @@ function parseTweetData(tweet) {
   const noteTweet = tweet.note_tweet || legacy.note_tweet;
   const article = tweet.article || legacy.article; // 检查 Article 字段
   
-  console.log("[Tweet Saver Inject] Parsing tweet data...");
+  console.log("[X2MD Inject] Parsing tweet data...");
 
   // 1. 提取文本
   let fullText = "";
   
   // A. 处理 Twitter Article (长文)
   if (article && article.content_state && article.content_state.blocks) {
-    console.log("[Tweet Saver Inject] Found Article data");
+    console.log("[X2MD Inject] Found Article data");
     const title = article.title ? `# ${article.title}\n\n` : "";
     const body = article.content_state.blocks.map(b => b.text).join("\n\n");
     fullText = title + body;
   } 
   // B. 处理 Note Tweet (长推文)
   else if (noteTweet && noteTweet.note_tweet_results && noteTweet.note_tweet_results.result) {
-    console.log("[Tweet Saver Inject] Found Note Tweet data");
+    console.log("[X2MD Inject] Found Note Tweet data");
     fullText = noteTweet.note_tweet_results.result.text;
   } 
   // C. 普通推文
@@ -149,7 +149,7 @@ function parseTweetData(tweet) {
   }
   // 最后检查 legacy 中的 user_id (通常没有 screen_name)
   else if (legacy.user_id_str) {
-      console.warn("[Tweet Saver Inject] User info missing, only ID available");
+      console.warn("[X2MD Inject] User info missing, only ID available");
   }
 
   // 3. 提取媒体 (图片/视频)
@@ -208,4 +208,4 @@ function parseTweetData(tweet) {
   };
 }
 
-console.log("[Tweet Saver] Inject script loaded (Full Data Mode)");
+console.log("[X2MD] Inject script loaded");

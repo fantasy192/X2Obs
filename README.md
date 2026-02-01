@@ -1,26 +1,96 @@
-# X2Flow
-X2Flow 允许用户一键将 Twitter/X 的推文和串推保存为本地 Markdown 文件，或同步到 FlowUs 笔记中。
+# X2Obs
 
+一键保存 Twitter/X 推文到本地 Markdown 文件或 GitHub 仓库。
 
+## 功能特性
 
-**Privacy Policy for X2Flow**
+- 支持保存单条推文和推文串（Thread）
+- 两种保存模式：本地下载 / GitHub 仓库
+- 自动提取推文文本、图片、视频链接
+- 支持长推文（Note Tweet）和文章（Article）
+- 文件命名格式：`时间戳@作者.md`（如 `20260201153045@elonmusk.md`）
 
-**Last Updated:** January 11, 2026
+## 安装
 
-**1. Introduction** X2Flow ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains how our Chrome extension collects, uses, and safeguards your information. The extension's single purpose is to allow users to save Twitter/X tweets to local Markdown files or sync them to FlowUs.
+1. 下载本仓库代码
+2. 打开 Chrome，访问 `chrome://extensions/`
+3. 开启「开发者模式」
+4. 点击「加载已解压的扩展程序」，选择项目文件夹
 
-**2. Information We Collect and Use**
+## 使用方法
 
-- **Website Content (Twitter/X Data):** We access the content of the tweets you select (including text, images, and videos) solely for the purpose of converting them into Markdown format or sending them to your FlowUs account upon your request.
-- **Authentication Information (FlowUs Token):** To sync data with FlowUs, we store your FlowUs API Token and Target Page ID. This information is stored locally on your device using `chrome.storage.sync` and is only transmitted to the official FlowUs API (`api.flowus.cn`).
-- **Browsing Data:** We do not track your browsing history. The `activeTab` and `scripting` permissions are used strictly to identify the tweet you wish to save when you trigger the extension.
+### 基本使用
 
-**3. Permissions Justification**
+1. 在 Twitter/X 页面上找到想要保存的推文
+2. 右键点击推文区域
+3. 选择「保存推文到 Markdown」
 
-- **Storage:** Used exclusively to save your preferences, FlowUs API Token, and Target Page ID locally so you don't need to re-enter them.
-- **Host Permissions (Twitter/X & FlowUs):** Used to extract tweet data from `twitter.com` or `x.com` and, if you choose, to send that data to `api.flowus.cn`.
-- **Downloads:** Used to save the generated `.md` files and media files directly to your computer.
+### 配置保存方式
 
-**4. Data Security** We do not sell, trade, or otherwise transfer your personally identifiable information to outside parties. Your FlowUs Token is stored within your browser's local storage and is never sent to any server other than the official FlowUs API.
+点击扩展图标，可以选择：
 
-**5. Contact** If you have any questions about this Privacy Policy, please contact us via the support email provided on the Chrome Web Store.
+**本地下载模式：**
+- 设置保存路径（相对于浏览器下载目录的子文件夹）
+- 留空则保存到下载目录根目录
+
+**GitHub 模式：**
+- Personal Access Token：在 [GitHub Settings](https://github.com/settings/tokens/new?scopes=repo) 创建，需要 `repo` 权限
+- 仓库：格式为 `owner/repo`
+- 保存路径：仓库内的子文件夹（可选）
+- 分支：默认 `main`
+
+## 生成的 Markdown 格式
+
+```markdown
+# Tweet by @username
+
+## Info
+
+- **Author:** [@username](https://x.com/username)
+- **Date:** 2026-02-01 15:30:45
+- **URL:** https://x.com/username/status/123456789
+
+## Content
+
+推文内容...
+
+![Image](https://pbs.twimg.com/media/xxx.jpg)
+```
+
+## 权限说明
+
+- `contextMenus`: 创建右键菜单
+- `activeTab`: 访问当前标签页
+- `downloads`: 下载文件到本地
+- `scripting`: 在页面中执行脚本提取推文数据
+- `storage`: 保存用户配置
+- `host_permissions`: 访问 Twitter/X 和 GitHub API
+
+---
+
+## Privacy Policy
+
+**Last Updated:** February 1, 2026
+
+### 1. Introduction
+
+X2MD is committed to protecting your privacy. This Privacy Policy explains how our Chrome extension collects, uses, and safeguards your information.
+
+### 2. Information We Collect and Use
+
+- **Twitter/X Content:** We access the content of tweets you select (text, images, videos) solely for converting them into Markdown format upon your request.
+- **Configuration Data:** We store your preferences (save mode, paths, GitHub token) using `chrome.storage.sync`. GitHub tokens are stored locally and only sent to the official GitHub API.
+- **Browsing Data:** We do not track your browsing history.
+
+### 3. Data Transmission
+
+- **Local Mode:** All data is processed locally. No data is sent to external servers.
+- **GitHub Mode:** Tweet content is sent to GitHub API (`api.github.com`) to create files in your repository. Your GitHub token is only used for authentication with GitHub.
+
+### 4. Data Security
+
+We do not sell, trade, or transfer your information to outside parties. Your GitHub token is stored securely in Chrome's sync storage and is never exposed to third parties.
+
+### 5. Contact
+
+If you have questions about this Privacy Policy, please open an issue in this repository.
