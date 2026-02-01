@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "X2MD",
+  "name": "X2Obs",
   "version": "1.0.0",
   "description": "一键保存 Twitter/X 推文到本地 Markdown 或 GitHub",
   "permissions": [
