@@ -339,13 +339,31 @@ function extractSingleTweet(article) {
   }
 
   if (!data.hasVideo) {
-    const cardLinks = article.querySelectorAll('[data-testid="card.wrapper"] a');
-    for (const link of cardLinks) {
-       const href = link.getAttribute('href');
-       if (href && (href.includes("youtube.com") || href.includes("youtu.be"))) {
-         data.hasVideo = true;
-         data.videoUrl = href;
-         break;
+    const cardWrapper = article.querySelector('[data-testid="card.wrapper"]');
+    if (cardWrapper) {
+       // 1. Check for Video Links (Youtube etc)
+       const cardLinks = cardWrapper.querySelectorAll('a');
+       for (const link of cardLinks) {
+          const href = link.getAttribute('href');
+          if (href && (href.includes("youtube.com") || href.includes("youtu.be"))) {
+            data.hasVideo = true;
+            data.videoUrl = href;
+            break;
+          }
+       }
+
+       // 2. If no video found, check for generic Link Card (Image + Link)
+       if (!data.hasVideo) {
+          // Usually the first anchor is the main link, and the first image is the preview
+          const cardLink = cardWrapper.querySelector('a');
+          const cardImg = cardWrapper.querySelector('img');
+          
+          if (cardLink && cardImg) {
+             data.card = {
+                url: cardLink.getAttribute('href'),
+                image: cardImg.getAttribute('src')
+             };
+          }
        }
     }
   }

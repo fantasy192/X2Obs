@@ -192,40 +192,36 @@ function sendToast(tabId, message, type) {
 function generateMarkdown(data) {
   const lines = [];
 
-  if (data.isThread && data.tweets && data.tweets.length > 1) {
-    lines.push(`# Thread by @${data.author} (${data.tweets.length} tweets)`);
-  } else {
-    lines.push(`# Tweet by @${data.author}`);
-  }
-  lines.push("");
-  lines.push("## Info");
-  lines.push("");
-  lines.push(`- **Author:** [@${data.author}](https://x.com/${data.author})`);
-  lines.push(`- **Date:** ${formatDateBeijing(data.date)}`);
-  lines.push(`- **URL:** ${data.url}`);
-  if (data.isThread) lines.push(`- **Tweets:** ${data.tweets.length}`);
-  lines.push("");
-  lines.push("## Content");
+  lines.push(`### 来源: ${data.url}`);
   lines.push("");
 
   if (data.tweets && data.tweets.length > 0) {
     data.tweets.forEach((tweet, index) => {
-      if (data.tweets.length > 1) {
-        lines.push(`### ${index + 1}/${data.tweets.length}`);
-        lines.push("");
-      }
-      if (tweet.content) lines.push(tweet.content);
+      const tweetLines = [];
+      if (tweet.content) tweetLines.push(tweet.content);
+
       if (tweet.images && tweet.images.length > 0) {
-        lines.push("");
-        tweet.images.forEach(img => lines.push(`![Image](${img})`));
+        tweetLines.push("");
+        tweet.images.forEach(img => tweetLines.push(`![Image](${img})`));
       }
-      if (data.tweets.length > 1 && tweet.url) {
-        lines.push("");
-        lines.push(`> [Link](${tweet.url})`);
+
+      if (tweet.card) {
+        tweetLines.push("");
+        tweetLines.push(`[![Card Image](${tweet.card.image})](${tweet.card.url})`);
       }
-      lines.push("");
-      if (data.tweets.length > 1 && index < data.tweets.length - 1) {
-        lines.push("---");
+
+      if (index === 0) {
+        // 主推文内容
+        lines.push(...tweetLines);
+        lines.push("");
+        if (data.tweets.length > 1) {
+          lines.push("");
+          lines.push("---");
+          lines.push("");
+        }
+      } else {
+        // 评论/后续推文内容，使用引用格式
+        lines.push(...tweetLines.map(line => line ? `> ${line}` : ">"));
         lines.push("");
       }
     });
