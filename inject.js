@@ -123,12 +123,13 @@ function parseTweetData(tweet) {
 
     const entityMap = article.content_state.entityMap || {};
 
-    // 1. 构建 mediaId -> URL 的映射
+    // 1. 构建 mediaId -> URL 的映射，同时提取视频信息
     const mediaIdToUrl = {};
 
     if (article.media_entities) {
       console.log(`[X2MD Inject] article.media_entities sample:`, Object.values(article.media_entities)[0]);
       Object.values(article.media_entities).forEach(m => {
+        // 处理图片
         const url = m.media_info?.original_img_url;
         if (url) {
           // 存储长 ID（API 格式）
@@ -139,6 +140,34 @@ function parseTweetData(tweet) {
           if (m.media_id) {
             mediaIdToUrl[String(m.media_id)] = url;
             console.log(`[X2MD Inject] Stored short mediaId: ${m.media_id}`);
+          }
+        }
+
+        // 处理视频
+        if (m.type === 'video' || m.type === 'animated_gif') {
+          hasVideo = true;
+          console.log(`[X2MD Inject] Found video in Article, type: ${m.type}`);
+          console.log(`[X2MD Inject] Video media entity:`, JSON.stringify(m, null, 2));
+
+          // 提取视频缩略图
+          if (m.media_info?.original_img_url && !images.includes(m.media_info.original_img_url)) {
+            images.push(m.media_info.original_img_url);
+            console.log(`[X2MD Inject] Added video thumbnail: ${m.media_info.original_img_url}`);
+          }
+
+          // 提取视频 URL
+          if (m.video_info && m.video_info.variants) {
+            console.log(`[X2MD Inject] video_info.variants:`, m.video_info.variants);
+            const mp4Variants = m.video_info.variants
+              .filter(v => v.content_type === "video/mp4" && v.bitrate !== undefined)
+              .sort((a, b) => b.bitrate - a.bitrate);
+            console.log(`[X2MD Inject] mp4Variants found:`, mp4Variants.length);
+            if (mp4Variants.length > 0) {
+              videoUrl = mp4Variants[0].url;
+              console.log(`[X2MD Inject] Extracted video URL: ${videoUrl}`);
+            }
+          } else {
+            console.log(`[X2MD Inject] No video_info or variants found in media entity`);
           }
         }
       });
@@ -331,7 +360,7 @@ function parseTweetData(tweet) {
     });
   }
 
-  return {
+  const result = {
     tweetId: legacy.id_str || tweet.id_str,
     author: author,
     authorName: authorName,
@@ -343,6 +372,15 @@ function parseTweetData(tweet) {
     url: `https://x.com/${author || 'i'}/status/${legacy.id_str || tweet.id_str}`,
     isArticle: !!(article && article.content_state) // 标记是否为 Article 类型
   };
+
+  console.log("[X2MD Inject] Final result:", {
+    hasVideo: result.hasVideo,
+    videoUrl: result.videoUrl,
+    imagesCount: result.images.length,
+    isArticle: result.isArticle
+  });
+
+  return result;
 }
 
 console.log("[X2MD] Inject script loaded");

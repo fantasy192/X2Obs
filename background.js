@@ -190,6 +190,15 @@ function sendToast(tabId, message, type) {
 // ==================== Markdown生成 ====================
 
 function generateMarkdown(data) {
+  console.log("[X2MD Background] generateMarkdown received data:", {
+    tweetsCount: data.tweets?.length,
+    firstTweet: data.tweets?.[0] ? {
+      hasVideo: data.tweets[0].hasVideo,
+      videoUrl: data.tweets[0].videoUrl,
+      imagesCount: data.tweets[0].images?.length
+    } : null
+  });
+
   const lines = [];
 
   lines.push(`### 来源: ${data.url}`);
@@ -198,9 +207,30 @@ function generateMarkdown(data) {
   if (data.tweets && data.tweets.length > 0) {
     data.tweets.forEach((tweet, index) => {
       const tweetLines = [];
-      if (tweet.content) tweetLines.push(tweet.content);
+      if (tweet.content) {
+        // 移除推文末尾的 t.co 媒体链接（Twitter 自动添加的，但网页上不显示）
+        let content = tweet.content.trim();
+        // 匹配并删除末尾的 https://t.co/xxx 链接（可能在新行或空格后）
+        content = content.replace(/\s*https?:\/\/t\.co\/\w+\s*$/g, '').trim();
+        tweetLines.push(content);
+      }
 
-      if (tweet.images && tweet.images.length > 0) {
+      // 处理视频
+      if (tweet.hasVideo && tweet.videoUrl) {
+        console.log("[X2MD Background] Adding video to markdown:", tweet.videoUrl);
+        tweetLines.push("");
+        // 使用 HTML video 标签，Obsidian 原生支持
+        // 如果有缩略图，使用第一张作为封面
+        const posterAttr = (tweet.images && tweet.images.length > 0)
+          ? ` poster="${tweet.images[0]}"`
+          : '';
+        tweetLines.push(`<video src="${tweet.videoUrl}" controls${posterAttr} width="100%"></video>`);
+      } else if (tweet.hasVideo) {
+        console.log("[X2MD Background] hasVideo is true but videoUrl is missing:", tweet);
+      }
+
+      // 处理图片（如果有视频，不显示图片，因为图片是视频缩略图）
+      if (!tweet.hasVideo && tweet.images && tweet.images.length > 0) {
         tweetLines.push("");
         tweet.images.forEach(img => tweetLines.push(`![Image](${img})`));
       }

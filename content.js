@@ -27,32 +27,61 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 2. 通过注入脚本获取完整数据 (长文、高清图、视频)
     fetchTweetDataFromPage(domTweet.tweetId)
       .then(fullData => {
+        console.log("从 inject.js 获取的完整数据:", {
+          tweetId: fullData.tweetId,
+          hasVideo: fullData.hasVideo,
+          videoUrl: fullData.videoUrl,
+          imagesCount: fullData.images?.length,
+          isArticle: fullData.isArticle
+        });
+
+        console.log("domTweet.tweets:", domTweet.tweets.map(t => ({ tweetId: t.tweetId })));
+
         // 3. 将完整数据返回给 background
         // 保持数据结构兼容: isThread 等字段可能需要从 DOM 判断，或者默认 false
         // 这里我们简单处理：如果是 Thread，inject.js 目前只返回单条。
         // 为了兼容 Thread 下载，我们暂且把 fullData 包装进 tweets 数组
-        
+
         // 修正: 保持 extractThreadData 的结构，但用 fullData 覆盖内容
         // 只有当 fullData 有值时才覆盖
+        let matched = false;
+        const updatedTweets = domTweet.tweets.map((t, index) => {
+          // 优先匹配 tweetId，如果不匹配则使用第一条推文（转发/引用场景）
+          if (t.tweetId === fullData.tweetId || (!matched && index === 0)) {
+            matched = true;
+            const merged = {
+              ...t,
+              content: fullData.content || t.content, // 只有非空才覆盖
+              // 对于 Article 类型，图片已内嵌在 content 中，不使用单独的 images 数组
+              images: fullData.isArticle ? [] : ((fullData.images && fullData.images.length > 0) ? fullData.images : t.images),
+              hasVideo: fullData.hasVideo,
+              videoUrl: fullData.videoUrl
+            };
+            console.log(`匹配到推文 ${t.tweetId} (fullData.tweetId=${fullData.tweetId}), 合并后数据:`, {
+              hasVideo: merged.hasVideo,
+              videoUrl: merged.videoUrl
+            });
+            return merged;
+          }
+          return t;
+        });
+
         const result = {
           ...domTweet, // 保留 thread 结构信息
           author: fullData.author || domTweet.author, // 优先使用 React 数据，否则回退
           date: fullData.date || domTweet.date,
-          // 更新主推文内容
-          tweets: domTweet.tweets.map(t => {
-            if (t.tweetId === fullData.tweetId) {
-              return {
-                ...t,
-                content: fullData.content || t.content, // 只有非空才覆盖
-                // 对于 Article 类型，图片已内嵌在 content 中，不使用单独的 images 数组
-                images: fullData.isArticle ? [] : ((fullData.images && fullData.images.length > 0) ? fullData.images : t.images),
-                hasVideo: fullData.hasVideo,
-                videoUrl: fullData.videoUrl
-              };
-            }
-            return t;
-          })
+          tweets: updatedTweets
         };
+
+        console.log("最终返回给 background 的 result:", {
+          tweetsCount: result.tweets.length,
+          firstTweet: result.tweets[0] ? {
+            tweetId: result.tweets[0].tweetId,
+            hasVideo: result.tweets[0].hasVideo,
+            videoUrl: result.tweets[0].videoUrl
+          } : null
+        });
+
         sendResponse({ success: true, data: result });
       })
       .catch(err => {
@@ -305,7 +334,8 @@ function extractSingleTweet(article) {
       const match = href.match(/\/([a-zA-Z0-9_]+)\/status\/(\d+)/);
       if (match) {
         data.tweetId = match[2];
-        data.url = `https://x.com${href.split("?")[0].split("/photo")[0].split("/video")[0]}`;
+        // 清理 URL，去掉 ?、/photo、/video、/analytics 等后缀
+        data.url = `https://x.com${href.split("?")[0].split("/photo")[0].split("/video")[0].split("/analytics")[0]}`;
         break;
       }
     }
