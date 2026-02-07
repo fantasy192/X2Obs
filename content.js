@@ -44,7 +44,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               return {
                 ...t,
                 content: fullData.content || t.content, // 只有非空才覆盖
-                images: (fullData.images && fullData.images.length > 0) ? fullData.images : t.images,
+                // 对于 Article 类型，图片已内嵌在 content 中，不使用单独的 images 数组
+                images: fullData.isArticle ? [] : ((fullData.images && fullData.images.length > 0) ? fullData.images : t.images),
                 hasVideo: fullData.hasVideo,
                 videoUrl: fullData.videoUrl
               };
@@ -282,10 +283,14 @@ function extractSingleTweet(article) {
     images: []
   };
   
-  // 提取推文内容（保留链接格式）
+  // 用于记录已在正文中提取的图片，防止重复
+  const embeddedImages = new Set();
+
+  // 提取推文内容（保留链接格式，并尝试内嵌图片）
   const contentElement = article.querySelector('[data-testid="tweetText"]');
   if (contentElement) {
-    data.content = extractTweetContent(contentElement);
+    // 传递 embeddedImages Set 给提取函数
+    data.content = extractTweetContent(contentElement, embeddedImages);
   }
   
   const timeElement = article.querySelector("time");
@@ -307,12 +312,23 @@ function extractSingleTweet(article) {
   }
   
   const imageElements = article.querySelectorAll('img[src*="pbs.twimg.com/media"]');
-  data.images = Array.from(imageElements).map(img => {
+  const domImages = Array.from(imageElements).map(img => {
     let src = img.getAttribute("src");
     if (src.includes("?")) {
-      src = src.split("?")[0] + "?format=jpg&name=large";
+       // 尝试获取高质量图片
+       const baseUrl = src.split("?")[0];
+       src = `${baseUrl}?format=jpg&name=large`;
     }
     return src;
+  });
+
+  // 过滤掉已经在正文中出现的图片
+  data.images = domImages.filter(imgUrl => {
+      // 检查该 URL 是否已被标记为嵌入
+      // 注意：需要模糊匹配，因为 embeddedImages 里存的可能是处理过的 URL
+      return !Array.from(embeddedImages).some(embedded => 
+          embedded.split("?")[0] === imgUrl.split("?")[0]
+      );
   });
 
   // 提取视频/GIF封面
@@ -325,7 +341,9 @@ function extractSingleTweet(article) {
     
     posters.forEach(poster => {
       // 避免重复添加相同的图片
-      if (!data.images.some(img => img.includes(poster.split("?")[0]))) {
+      const posterBase = poster.split("?")[0];
+      if (!data.images.some(img => img.includes(posterBase)) && 
+          !Array.from(embeddedImages).some(img => img.includes(posterBase))) {
          data.images.push(poster);
       }
     });
@@ -371,8 +389,8 @@ function extractSingleTweet(article) {
   return data;
 }
 
-// 提取推文内容，保留链接格式
-function extractTweetContent(element) {
+// 提取推文内容，保留链接格式，支持内嵌图片
+function extractTweetContent(element, embeddedImages = new Set()) {
   let result = '';
   
   for (const node of element.childNodes) {
@@ -382,7 +400,23 @@ function extractTweetContent(element) {
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const tagName = node.tagName.toLowerCase();
       
-      if (tagName === 'a') {
+      if (tagName === 'img') {
+        const src = node.getAttribute('src');
+        // 检查是否为媒体图片
+        if (src && src.includes('pbs.twimg.com/media')) {
+            let cleanSrc = src;
+            if (src.includes('?')) {
+                const baseUrl = src.split("?")[0];
+                cleanSrc = `${baseUrl}?format=jpg&name=large`;
+            }
+            result += `\n\n![Image](${cleanSrc})\n\n`;
+            embeddedImages.add(cleanSrc);
+        } else {
+            // 表情符号
+            const alt = node.getAttribute('alt') || '';
+            result += alt;
+        }
+      } else if (tagName === 'a') {
         // 链接元素
         const href = node.getAttribute('href') || '';
         const text = node.textContent || '';
@@ -412,13 +446,9 @@ function extractTweetContent(element) {
       } else if (tagName === 'br') {
         // 换行
         result += '\n';
-      } else if (tagName === 'img') {
-        // 表情符号
-        const alt = node.getAttribute('alt') || '';
-        result += alt;
       } else if (tagName === 'span' || tagName === 'div') {
         // 递归处理嵌套元素
-        result += extractTweetContent(node);
+        result += extractTweetContent(node, embeddedImages);
       } else {
         // 其他元素，提取文本
         result += node.textContent || '';
