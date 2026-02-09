@@ -346,19 +346,21 @@ function parseTweetData(tweet) {
     // 旧的数据结构: noteTweet.note_tweet_results.result.text
     fullText = noteTweet.text || noteTweet.note_tweet_results?.result?.text || "";
     console.log("[X2MD Inject] Note Tweet text length:", fullText.length);
-    console.log("[X2MD Inject] Note Tweet content:", fullText);
+
+    // 展开 Note Tweet 中的短链接
+    const noteTweetUrls = noteTweet.entity_set?.urls || [];
+    fullText = expandShortUrls(fullText, noteTweetUrls);
   }
   else {
     console.log("[X2MD Inject] Using legacy tweet data");
     fullText = legacy.full_text || legacy.text || "";
     console.log("[X2MD Inject] Legacy full_text length:", fullText.length);
-    console.log("[X2MD Inject] Legacy full_text content:", fullText);
 
-    // 暂时不删除任何链接,保留完整内容
-    // 理由: display_text_range 的含义可能与预期不同,为避免丢失重要内容,全部保留
-    console.log("[X2MD Inject] Keeping full text without trimming");
-    console.log("[X2MD Inject] display_text_range:", legacy.display_text_range);
-    console.log("[X2MD Inject] full_text length:", fullText.length);
+    // 展开短链接: 将 t.co 链接替换为原始链接
+    const urlEntities = legacy.entities?.urls || [];
+    fullText = expandShortUrls(fullText, urlEntities);
+
+    console.log("[X2MD Inject] After expanding URLs, length:", fullText.length);
   }
 
   let author = "";
@@ -411,6 +413,27 @@ function parseTweetData(tweet) {
   });
 
   return result;
+}
+
+// 展开短链接: 将 t.co 链接替换为原始链接
+function expandShortUrls(text, urlEntities) {
+  if (!urlEntities || urlEntities.length === 0) {
+    return text;
+  }
+
+  let expandedText = text;
+  urlEntities.forEach(urlEntity => {
+    const shortUrl = urlEntity.url;
+    const expandedUrl = urlEntity.expanded_url || urlEntity.url;
+
+    if (shortUrl && expandedUrl && shortUrl !== expandedUrl) {
+      // 替换所有出现的短链接
+      expandedText = expandedText.split(shortUrl).join(expandedUrl);
+      console.log(`[X2MD Inject] Expanded URL: ${shortUrl} -> ${expandedUrl}`);
+    }
+  });
+
+  return expandedText;
 }
 
 console.log("[X2MD] Inject script loaded");
