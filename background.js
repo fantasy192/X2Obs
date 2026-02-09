@@ -112,8 +112,14 @@ async function saveToGitHub(content, filename, githubConfig, tabId) {
       console.log("GitHub 提交成功:", result.content.html_url);
       sendToast(tabId, "已提交到 GitHub!", "success");
     } else {
-      const error = await response.json();
-      console.error("GitHub API 错误:", error);
+      let error;
+      try {
+        error = await response.json();
+      } catch (e) {
+        error = { message: `HTTP ${response.status}: ${response.statusText}` };
+      }
+
+      console.error("GitHub API 错误 (status:", response.status, "):", JSON.stringify(error, null, 2));
 
       if (response.status === 401) {
         sendToast(tabId, "GitHub Token 无效或已过期", "error");
@@ -123,7 +129,8 @@ async function saveToGitHub(content, filename, githubConfig, tabId) {
         // 文件已存在，需要获取 sha 后更新
         await updateExistingFile(content, filePath, githubConfig, tabId);
       } else {
-        sendToast(tabId, `GitHub 错误: ${error.message || response.status}`, "error");
+        const errorMsg = error.message || error.error || JSON.stringify(error);
+        sendToast(tabId, `GitHub 错误 (${response.status}): ${errorMsg}`, "error");
       }
     }
   } catch (e) {
@@ -208,10 +215,8 @@ function generateMarkdown(data) {
     data.tweets.forEach((tweet, index) => {
       const tweetLines = [];
       if (tweet.content) {
-        // 移除推文末尾的 t.co 媒体链接（Twitter 自动添加的，但网页上不显示）
+        // inject.js 已经处理了媒体链接的移除，这里直接使用内容
         let content = tweet.content.trim();
-        // 匹配并删除末尾的 https://t.co/xxx 链接（可能在新行或空格后）
-        content = content.replace(/\s*https?:\/\/t\.co\/\w+\s*$/g, '').trim();
         tweetLines.push(content);
       }
 

@@ -106,15 +106,27 @@ function findTweetObjectInFiber(fiber, depth = 0, maxDepth = 50, visited = new S
 }
 
 function parseTweetData(tweet) {
-  const legacy = tweet.legacy || tweet; 
+  const legacy = tweet.legacy || tweet;
   const noteTweet = tweet.note_tweet || legacy.note_tweet;
-  const article = tweet.article || legacy.article; 
-  
+  const article = tweet.article || legacy.article;
+
   console.log("[X2MD Inject] Parsing tweet data...");
+  console.log("[X2MD Inject] Has article?", !!article);
+  console.log("[X2MD Inject] Has note_tweet?", !!noteTweet);
+  console.log("[X2MD Inject] tweet keys:", Object.keys(tweet));
+  console.log("[X2MD Inject] legacy keys:", Object.keys(legacy));
+
+  // 详细检查 note_tweet 结构
+  if (tweet.note_tweet) {
+    console.log("[X2MD Inject] tweet.note_tweet structure:", Object.keys(tweet.note_tweet));
+  }
+  if (legacy.note_tweet) {
+    console.log("[X2MD Inject] legacy.note_tweet structure:", Object.keys(legacy.note_tweet));
+  }
 
   let fullText = "";
-  const images = []; 
-  const contentInsertedImages = new Set(); 
+  const images = [];
+  const contentInsertedImages = new Set();
   let videoUrl = null;
   let hasVideo = false;
 
@@ -295,6 +307,10 @@ function parseTweetData(tweet) {
             // 链接
             const linkText = blockText.slice(range.offset, range.offset + range.length);
             textParts.push(`[${linkText}](${entityContent.url})`);
+          } else {
+            // 其他类型的 entity (格式标记、mention 等)，保留原文本
+            textParts.push(blockText.slice(range.offset, range.offset + range.length));
+            console.log(`[X2MD Inject] Unknown entity type "${entityContent.type}", preserved original text`);
           }
         } else {
           // 没有找到对应的 entity，保留原文本
@@ -323,12 +339,26 @@ function parseTweetData(tweet) {
     console.log("[X2MD Inject] Inserted image URLs:", Array.from(contentInsertedImages));
 
     // 不需要单独的 images 数组，所有图片都应该已经在正文中
-  } 
-  else if (noteTweet && noteTweet.note_tweet_results && noteTweet.note_tweet_results.result) {
-    fullText = noteTweet.note_tweet_results.result.text;
-  } 
+  }
+  else if (noteTweet) {
+    console.log("[X2MD Inject] Found Note Tweet");
+    // 新的数据结构: noteTweet.text (直接访问)
+    // 旧的数据结构: noteTweet.note_tweet_results.result.text
+    fullText = noteTweet.text || noteTweet.note_tweet_results?.result?.text || "";
+    console.log("[X2MD Inject] Note Tweet text length:", fullText.length);
+    console.log("[X2MD Inject] Note Tweet content:", fullText);
+  }
   else {
+    console.log("[X2MD Inject] Using legacy tweet data");
     fullText = legacy.full_text || legacy.text || "";
+    console.log("[X2MD Inject] Legacy full_text length:", fullText.length);
+    console.log("[X2MD Inject] Legacy full_text content:", fullText);
+
+    // 暂时不删除任何链接,保留完整内容
+    // 理由: display_text_range 的含义可能与预期不同,为避免丢失重要内容,全部保留
+    console.log("[X2MD Inject] Keeping full text without trimming");
+    console.log("[X2MD Inject] display_text_range:", legacy.display_text_range);
+    console.log("[X2MD Inject] full_text length:", fullText.length);
   }
 
   let author = "";

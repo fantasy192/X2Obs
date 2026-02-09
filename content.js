@@ -32,7 +32,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           hasVideo: fullData.hasVideo,
           videoUrl: fullData.videoUrl,
           imagesCount: fullData.images?.length,
-          isArticle: fullData.isArticle
+          isArticle: fullData.isArticle,
+          contentLength: fullData.content?.length,
+          contentPreview: fullData.content?.substring(0, 200)
         });
 
         console.log("domTweet.tweets:", domTweet.tweets.map(t => ({ tweetId: t.tweetId })));
@@ -59,7 +61,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             };
             console.log(`匹配到推文 ${t.tweetId} (fullData.tweetId=${fullData.tweetId}), 合并后数据:`, {
               hasVideo: merged.hasVideo,
-              videoUrl: merged.videoUrl
+              videoUrl: merged.videoUrl,
+              contentLength: merged.content?.length,
+              domContentLength: t.content?.length,
+              reactContentLength: fullData.content?.length
             });
             return merged;
           }
